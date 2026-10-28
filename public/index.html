@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vite in Workers</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172c29; background: #f4f6f3; font: 15px system-ui, sans-serif; }
+    header { padding: 28px 32px; border-bottom: 1px solid #d5ddd7; background: white; }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    p { margin: 8px 0; color: #596b64; }
+    main { padding: 24px 32px; }
+    .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+    input, select, button { font: inherit; padding: 10px; border: 1px solid #bac9c1; border-radius: 6px; }
+    button { background: #1f6450; color: white; cursor: pointer; }
+    button:disabled { opacity: .5; }
+    .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    section { min-width: 0; }
+    label { display: block; margin-bottom: 8px; }
+    textarea, iframe { width: 100%; height: 440px; background: white; border: 1px solid #bac9c1; border-radius: 8px; }
+    textarea { padding: 16px; font: 13px/1.6 ui-monospace, monospace; tab-size: 2; resize: vertical; }
+    iframe { display: block; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+    a { color: #1f6450; }
+    #status { font-size: 13px; }
+    #errors { color: #972b28; }
+    details { margin-top: 20px; }
+    @media (max-width: 800px) {
+      .workspace { grid-template-columns: 1fr; }
+      main, header { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Vite in Workers</h1>
+    <p>Edit a small React app. Build it in a fresh Worker. Open the result.</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="token" type="password" placeholder="Build token" aria-label="Build token" autocomplete="off">
+      <button id="build">Build & preview</button>
+      <button id="reset">Reset example</button>
+      <span id="status" role="status">Loading example…</span>
+    </div>
+    <div class="workspace">
+      <section>
+        <label for="files">Source file</label>
+        <select id="files" aria-label="Source file"></select>
+        <label for="source" style="margin-top: 12px">Edit source</label>
+        <textarea id="source" spellcheck="false"></textarea>
+      </section>
+      <section>
+        <label>Preview <a id="preview-link" target="_blank" rel="noopener" hidden>Open in new tab</a></label>
+        <iframe id="preview" title="Application preview" sandbox="allow-scripts"></iframe>
+      </section>
+    </div>
+    <pre id="errors" role="alert"></pre>
+    <details>
+      <summary>Build details and dependencies</summary>
+      <pre id="details"></pre>
+      <p>Full rebuild and reload. No HMR. Source and output are saved as immutable revisions; preview URLs are shareable.</p>
+    </details>
+  </main>
+  <script type="module">
+    const $ = id => document.getElementById(id);
+    const draftKey = 'vite-in-workers-project';
+    let project, selected;
+
+    async function example() {
+      return (await fetch('/example')).json();
+    }
+
+    function showFiles() {
+      $('files').replaceChildren(...Object.keys(project.files).map(name => new Option(name, name)));
+      selected = $('files').value;
+      $('source').value = project.files[selected];
+    }
+
+    function saveDraft() {
+      project.files[selected] = $('source').value;
+      localStorage.setItem(draftKey, JSON.stringify(project));
+    }
+
+    function formatError(error) {
+      const location = error.file && `${error.file}:${error.line ?? '?'}:${error.column ?? '?'}`;
+      return [location, error.message, error.frame].filter(Boolean).join('\n');
+    }
+
+    try { project = JSON.parse(localStorage.getItem(draftKey)); } catch {}
+    if (!project?.files) project = await example();
+    if (['localhost', '127.0.0.1'].includes(location.hostname)) $('token').value = 'local-demo';
+
+    $('source').addEventListener('input', saveDraft);
+    $('files').addEventListener('change', () => {
+      selected = $('files').value;
+      $('source').value = project.files[selected];
+    });
+    $('reset').addEventListener('click', async () => {
+      project = await example();
+      showFiles();
+      saveDraft();
+    });
+    $('build').addEventListener('click', async () => {
+      saveDraft();
+      $('build').disabled = true;
+      $('errors').textContent = '';
+      $('status').textContent = 'Building…';
+      const start = performance.now();
+      try {
+        const response = await fetch('/build', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${$('token').value}`
+          },
+          body: JSON.stringify(project)
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          const errors = result.errors ?? [{ message: result.error }];
+          $('errors').textContent = errors.map(formatError).join('\n\n');
+          $('status').textContent = 'Build failed. The last successful preview is unchanged.';
+          return;
+        }
+        $('preview').src = result.preview;
+        $('preview-link').href = result.preview;
+        $('preview-link').hidden = false;
+        const elapsed = Math.round(performance.now() - start);
+        $('status').textContent = `Built in ${elapsed} ms · Vite ${result.viteVersion} · ${result.runtime}`;
+        $('details').textContent = JSON.stringify({
+          id: result.id,
+          dependencies: result.dependencies,
+          wasmMemoryMiB: result.wasmMemoryBytes / 1048576,
+          files: result.output.map(file => file.filename),
+          warnings: result.warnings
+        }, null, 2);
+      } catch (error) {
+        $('errors').textContent = String(error);
+        $('status').textContent = 'Request failed.';
+      } finally {
+        $('build').disabled = false;
+      }
+    });
+    showFiles();
+    $('status').textContent = 'Ready to build';
+  </script>
+</body>
+</html>

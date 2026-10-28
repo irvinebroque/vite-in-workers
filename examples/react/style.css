@@ -1,0 +1,7 @@
+:root { font-family: system-ui, sans-serif; color: #18332f; background: #f3f8f5; }
+body { margin: 0; padding: 48px 28px; }
+main { max-width: 480px; margin: auto; }
+h1 { font-size: 36px; letter-spacing: -1px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; }
+.task { width: 100%; padding: 20px; border: 1px solid #b1cfc0; border-radius: 12px; background: white; text-align: left; font: inherit; cursor: pointer; }
+.done { background: #d4eee0; text-decoration: line-through; }

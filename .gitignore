@@ -1,0 +1,14 @@
+node_modules/
+prepared/
+toolchain/rolldown.wasm
+toolchain/build.json
+.cloudflare/
+.wrangler/
+.env*
+.dev.vars*
+work/
+test-results/
+playwright-report/
+reports/
+.DS_Store
+!host/.dev.vars.example

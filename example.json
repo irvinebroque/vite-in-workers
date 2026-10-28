@@ -1,0 +1,7 @@
+{
+  "entry": "main.js",
+  "files": {
+    "main.js": "import { answer } from './answer.js'; export default answer;",
+    "answer.js": "export const answer = 42;"
+  }
+}

@@ -1,0 +1,62 @@
+diff --git a/crates/rolldown_binding/Cargo.toml b/crates/rolldown_binding/Cargo.toml
+index d93a47f..bfc87a2 100644
+--- a/crates/rolldown_binding/Cargo.toml
++++ b/crates/rolldown_binding/Cargo.toml
+@@ -24,7 +24,7 @@ derive_more = { workspace = true }
+ futures = { workspace = true }
+ indexmap = { workspace = true }
+ itertools = { workspace = true }
+-napi = { workspace = true }
++napi = { workspace = true, features = ["async-runtime"] }
+ napi-derive = { workspace = true }
+ num_cpus = { workspace = true }
+ oxc = { workspace = true }
+diff --git a/crates/rolldown_binding/src/lib.rs b/crates/rolldown_binding/src/lib.rs
+index 8110e6b..1d20c31 100644
+--- a/crates/rolldown_binding/src/lib.rs
++++ b/crates/rolldown_binding/src/lib.rs
+@@ -48,6 +48,9 @@ static ALLOC: mimalloc_safe::MiMalloc = mimalloc_safe::MiMalloc;
+ static ALLOC: rolldown_tracking_allocator::TrackingAllocator =
+   rolldown_tracking_allocator::TrackingAllocator;
+ 
++#[cfg(all(target_family = "wasm", not(tokio_unstable)))]
++mod worker_runtime;
++
+ pub mod binding_bundler;
+ pub mod binding_dev_engine;
+ pub mod binding_dev_options;
+@@ -106,6 +109,9 @@ pub fn start_async_runtime() {
+ 
+ #[napi_derive::module_init]
+ fn init() {
++  #[cfg(all(target_family = "wasm", not(tokio_unstable)))]
++  napi::bindgen_prelude::register_async_runtime(worker_runtime::WorkerRuntime);
++
+   #[cfg(not(target_family = "wasm"))]
+   {
+     use napi::{bindgen_prelude::create_custom_tokio_runtime, tokio};
+diff --git a/crates/rolldown_plugin_utils/Cargo.toml b/crates/rolldown_plugin_utils/Cargo.toml
+index a2556ff..f115d54 100644
+--- a/crates/rolldown_plugin_utils/Cargo.toml
++++ b/crates/rolldown_plugin_utils/Cargo.toml
+@@ -29,4 +29,5 @@ rolldown_std_utils = { workspace = true }
+ rolldown_utils = { workspace = true }
+ serde_json = { workspace = true }
+ string_wizard = { workspace = true }
++[target.'cfg(not(target_family = "wasm"))'.dependencies]
+ tokio = { workspace = true, features = ["fs"] }
+diff --git a/crates/rolldown_plugin_utils/src/asset_emission.rs b/crates/rolldown_plugin_utils/src/asset_emission.rs
+index 4ccac33..7614dd5 100644
+--- a/crates/rolldown_plugin_utils/src/asset_emission.rs
++++ b/crates/rolldown_plugin_utils/src/asset_emission.rs
+@@ -15,7 +15,10 @@ pub async fn emit_asset(
+   read_error: impl FnOnce(std::io::Error) -> anyhow::Error,
+ ) -> anyhow::Result<ArcStr> {
+   let path = Path::new(clean_id);
++  #[cfg(not(target_family = "wasm"))]
+   let bytes = tokio::fs::read(clean_id).await.map_err(read_error)?;
++  #[cfg(target_family = "wasm")]
++  let bytes = std::fs::read(clean_id).map_err(read_error)?;
+   let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("asset").to_string();
+   let original_file_name =
+     path.strip_prefix(ctx.cwd()).unwrap_or(path).to_string_lossy().into_owned();

@@ -1,0 +1,8 @@
+{
+  "version": "1.2.15",
+  "repository": "https://github.com/rolldown/rolldown.git",
+  "commit": "89d821ca07cf9ccd84dd92bd3f48af0f579ab21a",
+  "rust": "1.99.0",
+  "target": "wasm32-wasip1",
+  "emnapi": "2.0.0-alpha.5"
+}
