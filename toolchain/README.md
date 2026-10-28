@@ -72,16 +72,14 @@ build, so this loader deliberately has no reusable-session lifecycle.
 3. Run `npm run build:rolldown`, `npm run test:all`, and both CLI demos. Review
    the new import/memory report, package sizes, and dependency audits.
 4. Deploy using `cf`; rerun hosted integration and Chromium tests before claiming
-   support. Update the expected versions in tests and the validation report.
+   support. Update the expected versions in tests.
 
 The pin is intentional: the build never silently follows `main` or `latest`.
 This project owns its small upstream patch and Worker loader. Owning the build
 removes the third-party fork dependency; it does not establish upstream support
-for Vite running inside Workers. See [../COMPATIBILITY.md](../COMPATIBILITY.md).
+for Vite running inside Workers.
 
 ## Source and license
 
 The build inputs are the official release, official dependency packages, and the
-source files in this directory. [../PROVENANCE.md](../PROVENANCE.md) maps the
-adapters to their upstream interfaces. [../THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)
-records the retained notices and the obligations for distributing generated bundles.
+source files in this directory. This project is licensed under [MIT](../LICENSE).

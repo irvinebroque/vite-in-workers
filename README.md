@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 **Experimental:** Vite 8.3.5 on a custom Worker port, with Rolldown 1.2.15 compiled
-from official upstream source. [What is supported →](COMPATIBILITY.md)
+from official upstream source.
 
 ## Try it
 
@@ -115,8 +115,6 @@ npm run test:all       # Local Worker integration + Chromium
 Worker source is TypeScript. `npm run typecheck` checks it against bindings
 generated from the `cf` config; `test:all` includes this check.
 
-[Validation results and limits →](VALIDATION.md)
-
 ## Deploy
 
 Choose your Worker and bucket names in [host/cloudflare.config.ts](host/cloudflare.config.ts).
@@ -139,6 +137,5 @@ Use the generated token in the hosted editor. Preview URLs and source maps are p
 | [src/build.ts](src/build.ts) | Write source to memory → call Vite → return files |
 | [compat/rolldown.ts](compat/rolldown.ts) | Load WASM and drive its async runtime |
 | [toolchain/](toolchain/README.md) | Build Rolldown from pinned upstream source |
-| [PLATFORM.md](PLATFORM.md) | API, permissions, storage, and platform integration |
 
-[MIT license](LICENSE) · [Source provenance](PROVENANCE.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+[MIT license](LICENSE)
