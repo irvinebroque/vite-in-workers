@@ -2,7 +2,7 @@ import { instantiateNapiModule, type WASIInstance } from '@emnapi/core';
 import { asyncWork, tsfn } from '@emnapi/core/plugins';
 import { createContext } from '@emnapi/runtime';
 import { WASI, type IFs } from '@tybys/wasm-util';
-import fs from './fs.cjs';
+import fs from 'node:fs';
 import wasm from './rolldown.wasm';
 
 type Binding = Record<string, unknown> & { advanceWorkerTasks(budget: number): void };

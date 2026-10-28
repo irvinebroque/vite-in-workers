@@ -1,6 +1,13 @@
 export interface Project {
   entry?: string;
+  serverEntry?: string;
   files: Record<string, string>;
+}
+
+export interface CompilerRequest {
+  entry: string;
+  files: Project['files'];
+  target: 'client' | 'server';
 }
 
 export interface Diagnostic {
@@ -22,6 +29,6 @@ export interface BuildResult {
 }
 
 export interface SavedBuild {
-  project: Project;
   bundle: BuildResult;
+  server?: BuildResult;
 }

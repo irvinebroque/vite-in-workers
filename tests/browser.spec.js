@@ -11,8 +11,11 @@ test('edit, build, interact, rebuild, report errors, and isolate preview', async
   await expect(page.getByRole('status')).toContainText('Cloudflare-Workers');
   const frame = page.frameLocator('#preview');
   await expect(frame.getByRole('heading')).toHaveText('My task board');
+  await expect(frame.getByTestId('server-message')).toHaveText('Hello from server.ts');
+  await expect(frame.getByTestId('server-runtime')).toHaveText('Server runtime: Cloudflare-Workers');
   await frame.getByRole('button').click();
   await expect(frame.getByRole('button')).toHaveClass('task done');
+  await expect(frame.getByRole('button')).toHaveText('✓ Shipped my first app');
   await expect(frame.getByRole('button')).toHaveCSS('background-color', 'rgb(212, 238, 224)');
   await page.screenshot({ path: `reports/preview-${process.env.BUILD_URL ? 'hosted' : 'local'}.png`, fullPage: true });
 
@@ -31,7 +34,21 @@ test('edit, build, interact, rebuild, report errors, and isolate preview', async
   await page.getByLabel('Edit source').fill('export const title = "Built from an edit";');
   await page.getByRole('button', { name: 'Build & preview' }).click();
   await expect(frame.getByRole('heading')).toHaveText('Built from an edit');
+  const oldPreview = await page.locator('#preview').getAttribute('src');
+  await page.getByLabel('Source file').selectOption('server.ts');
+  const serverSource = await page.getByLabel('Edit source').inputValue();
+  await page.getByLabel('Edit source').fill(serverSource.replace('Hello from server.ts', 'Edited server response'));
+  await page.getByRole('button', { name: 'Build & preview' }).click();
+  await expect(frame.getByTestId('server-message')).toHaveText('Edited server response');
+  const oldTask = await page.request.get(oldPreview.replace('index.html', 'api/task'));
+  expect((await oldTask.json()).message).toBe('Hello from server.ts');
   const savedPreview = await page.locator('#preview').getAttribute('src');
+  await page.getByLabel('Edit source').fill('const broken: = 1;');
+  await page.getByRole('button', { name: 'Build & preview' }).click();
+  await expect(page.getByRole('alert')).toContainText('server.ts:1:');
+  expect(await page.locator('#preview').getAttribute('src')).toBe(savedPreview);
+  await expect(frame.getByTestId('server-message')).toHaveText('Edited server response');
+  await page.getByLabel('Edit source').fill(serverSource);
   await page.getByLabel('Source file').selectOption('main.tsx');
   await page.getByLabel('Edit source').fill('const broken: = 1;');
   await page.getByRole('button', { name: 'Build & preview' }).click();

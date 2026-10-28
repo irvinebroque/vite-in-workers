@@ -35,7 +35,7 @@
 <body>
   <header>
     <h1>Vite in Workers</h1>
-    <p>Edit a small React app. Build it in a fresh Worker. Open the result.</p>
+    <p>Edit React and server code. Compile both in Workers, then run the full app.</p>
   </header>
   <main>
     <div class="toolbar">
@@ -60,12 +60,13 @@
     <details>
       <summary>Build details and dependencies</summary>
       <pre id="details"></pre>
-      <p>Full rebuild and reload. No HMR. Source and output are saved as immutable revisions; preview URLs are shareable.</p>
+      <p>Full rebuild and reload. No HMR. Drafts stay in this browser; built previews are saved and shareable.</p>
     </details>
   </main>
   <script type="module">
     const $ = id => document.getElementById(id);
-    const draftKey = 'vite-in-workers-project';
+    // Keep older client-only drafts under their original key.
+    const draftKey = 'vite-in-workers-project-v2';
     let project, selected;
 
     async function example() {
@@ -106,7 +107,7 @@
       saveDraft();
       $('build').disabled = true;
       $('errors').textContent = '';
-      $('status').textContent = 'Building…';
+      $('status').textContent = project.serverEntry ? 'Building client and server…' : 'Building…';
       const start = performance.now();
       try {
         const response = await fetch('/build', {
@@ -128,13 +129,15 @@
         $('preview-link').href = result.preview;
         $('preview-link').hidden = false;
         const elapsed = Math.round(performance.now() - start);
-        $('status').textContent = `Built in ${elapsed} ms · Vite ${result.viteVersion} · ${result.runtime}`;
+        $('status').textContent = `${result.server ? 'Client + server built' : 'Built'} in ${elapsed} ms · Vite ${result.viteVersion} · ${result.runtime}`;
         $('details').textContent = JSON.stringify({
           id: result.id,
           dependencies: result.dependencies,
           wasmMemoryMiB: result.wasmMemoryBytes / 1048576,
-          files: result.output.map(file => file.filename),
-          warnings: result.warnings
+          clientFiles: result.output.map(file => file.filename),
+          serverFiles: result.server?.output.map(file => file.filename),
+          serverUrl: result.serverUrl,
+          warnings: [...result.warnings, ...(result.server?.warnings ?? [])]
         }, null, 2);
       } catch (error) {
         $('errors').textContent = String(error);

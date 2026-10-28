@@ -48,6 +48,8 @@ for (const name of ['react', 'react-dom', 'scheduler', 'clsx']) {
   const directory = path.join(root, 'node_modules', name);
   dependencies[name] = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8')).version;
   for (const filename of readdirSync(directory, { recursive: true })) {
+    // The fixed package set supports browser apps, not React server rendering.
+    if (name === 'react-dom' && /server|static/.test(filename)) continue;
     if (/\.(?:js|mjs|json)$/.test(filename)) {
       toolFiles[`/tmp/app/node_modules/${name}/${filename}`] = readFileSync(path.join(directory, filename), 'utf8');
     }
@@ -58,6 +60,7 @@ writeFileSync('prepared/tool-files.json', JSON.stringify(toolFiles));
 
 const example = {
   entry: 'index.html',
+  serverEntry: 'server.ts',
   files: Object.fromEntries(readdirSync('examples/react').map(name => [name, readFileSync(`examples/react/${name}`, 'utf8')]))
 };
 writeFileSync('prepared/example.json', JSON.stringify(example, null, 2));
@@ -89,9 +92,6 @@ await build({
         const entry = rolldownPackage.exports[name.replace(/^rolldown/, '.')];
         return { path: path.join(rolldownDir, typeof entry === 'string' ? entry : entry.browser ?? entry.default) };
       });
-      bundler.onResolve({ filter: /^(?:node:)?fs(?:\/promises)?$/ }, ({ path: name }) => ({
-        path: path.join(root, 'compat', name.endsWith('/promises') ? 'fs-promises.cjs' : 'fs.cjs')
-      }));
       bundler.onResolve({ filter: /\.wasm$/ }, ({ path }) => ({ path, external: true }));
       bundler.onLoad({ filter: /\.[cm]?js$/ }, async ({ path: filename }) => ({
         contents: await adaptModule(readFileSync(filename, 'utf8'), filename),
@@ -102,14 +102,6 @@ await build({
   }]
 });
 console.log(`Packaged Vite ${version}. Application builds will run inside Workers.`);
-
-// Package the platform shell too. This never compiles the example application.
-await build({
-  entryPoints: ['src/host.ts'], outfile: 'prepared/host.js',
-  bundle: true, format: 'esm', platform: 'browser', target: 'es2022',
-  external: ['./runtime.txt', './rolldown.bin', './lexer.bin'],
-  loader: { '.html': 'text' }
-});
 
 async function adaptModule(source, filename) {
   // Vite serializes this function into browser code. Preserve its import.meta

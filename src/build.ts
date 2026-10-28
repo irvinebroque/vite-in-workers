@@ -1,5 +1,5 @@
 import type { BuildOptions } from 'vite';
-import type { BuildResult, Diagnostic, Project } from './types.ts';
+import type { BuildResult, CompilerRequest, Diagnostic } from './types.ts';
 import { initializeRuntime, writeFiles } from '../compat/runtime.ts';
 import { memory, withRuntime } from '../compat/rolldown.ts';
 import dependencies from '../prepared/dependencies.json';
@@ -9,12 +9,13 @@ import { restrictImports, diagnostic } from './project.ts';
 export default {
   async fetch(request) {
     try {
-      const project = await request.json<Project>();
+      const project = await request.json<CompilerRequest>();
+      const server = project.target === 'server';
       await initializeRuntime();
       writeFiles(project.files, '/tmp/app/');
       const vite = await import('vite');
       const rolldown = await import('rolldown');
-      const entry = `/tmp/app/${project.entry ?? 'main.js'}`;
+      const entry = `/tmp/app/${project.entry}`;
       const html = entry.endsWith('.html');
       let runtime: string | undefined;
       const warnings: Diagnostic[] = [];
@@ -26,11 +27,13 @@ export default {
         target: 'esnext',
         assetsInlineLimit: 0,
         modulePreload: false,
+        ssr: server ? entry : false,
         rolldownOptions: {
           input: html ? entry : undefined,
+          output: server ? { entryFileNames: 'server.js', chunkFileNames: 'chunks/[name]-[hash].js', codeSplitting: true } : undefined,
           onwarn: warning => warnings.push(diagnostic(warning))
         },
-        lib: html ? undefined : { entry, formats: ['es'], fileName: 'app' }
+        lib: html || server ? undefined : { entry, formats: ['es'], fileName: 'app' }
       };
 
       const result = await withRuntime(() => vite.build({
@@ -40,6 +43,7 @@ export default {
         envDir: false,
         publicDir: false,
         logLevel: 'silent',
+        ssr: server ? { target: 'webworker', noExternal: true } : undefined,
         css: { postcss: { plugins: [] } },
         plugins: [restrictImports(project.files, dependencies), {
           name: 'show-build-runtime',

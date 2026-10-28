@@ -1,4 +1,4 @@
-import fs from './fs.cjs';
+import fs from 'node:fs';
 import { initializeRolldown } from './rolldown.ts';
 import toolFiles from '../prepared/tool-files.json';
 

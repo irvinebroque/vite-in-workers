@@ -4,9 +4,12 @@ import type { Diagnostic, Project } from './types.ts';
 
 // The platform supplies configuration and dependencies; users supply source files.
 export function validateProject(project: unknown): asserts project is Project {
-  const { files, entry = 'main.js' } = (project ?? {}) as { files?: unknown; entry?: unknown };
+  const { files, entry = 'main.js', serverEntry } = (project ?? {}) as { files?: unknown; entry?: unknown; serverEntry?: unknown };
   if (!files || typeof files !== 'object' || Array.isArray(files)) throw Error('Supply a files object.');
   if (typeof entry !== 'string' || !Object.hasOwn(files, entry)) throw Error('Entry must name a supplied file.');
+  if (serverEntry !== undefined && (typeof serverEntry !== 'string' || !Object.hasOwn(files, serverEntry) || !/\.[jt]s$/.test(serverEntry))) {
+    throw Error('Server entry must name a supplied JavaScript or TypeScript file.');
+  }
   if (Object.keys(files).length > 30) throw Error('At most 30 source files are allowed.');
   for (const [name, source] of Object.entries(files)) {
     if (!/^(?:[\w-]+\/)*[\w.-]+\.(?:js|jsx|ts|tsx|json|css|html|svg)$/.test(name) ||
@@ -35,6 +38,9 @@ export function restrictImports(files: Project['files'], dependencies: Record<st
       }
       const packageName = id.startsWith('@') ? id.split('/').slice(0, 2).join('/') : id.split('/')[0];
       if (!Object.hasOwn(dependencies, packageName)) throw Error(`Package is not installed: ${id}`);
+      if (/^react-dom\/(?:server|static)(?:[.?/]|$)/.test(id)) {
+        throw Error(`React DOM server/static entrypoints are not included: ${id}`);
+      }
     }
   };
 }

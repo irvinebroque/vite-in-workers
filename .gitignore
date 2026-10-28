@@ -4,6 +4,7 @@ toolchain/rolldown.wasm
 toolchain/build.json
 .cloudflare/
 .wrangler/
+dist/
 .env*
 .dev.vars*
 work/
@@ -11,4 +12,4 @@ test-results/
 playwright-report/
 reports/
 .DS_Store
-!host/.dev.vars.example
+!.dev.vars.example

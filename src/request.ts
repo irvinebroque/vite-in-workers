@@ -9,6 +9,12 @@ export function authorized(request: Request, token: string) {
 }
 
 export async function readProject(request: Request) {
+  const project: unknown = JSON.parse(await (await readBody(request)).text());
+  validateProject(project);
+  return project;
+}
+
+export async function readBody(request: Request) {
   // Enforce the limit while reading, including requests without Content-Length.
   let size = 0;
   const chunks = [];
@@ -17,7 +23,5 @@ export async function readProject(request: Request) {
     if (size > 512_000) throw Error('Request exceeds 512 KB.');
     chunks.push(chunk);
   }
-  const project: unknown = JSON.parse(await new Blob(chunks).text());
-  validateProject(project);
-  return project;
+  return new Blob(chunks);
 }

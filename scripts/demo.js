@@ -1,17 +1,19 @@
-import { readFileSync } from 'node:fs';
-import { startRuntime } from './runtime.js';
+import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { startDevServer } from './dev-server.js';
 
-const runtime = startRuntime();
+const state = mkdtempSync(join(tmpdir(), 'vite-workers-demo-'));
+let server;
 const backend = process.argv.includes('--backend');
-const project = backend ? {
-  files: { 'main.js': 'export default { fetch(request, env) { return Response.json({ message: env.GREETING }); } };' }
-} : JSON.parse(readFileSync(new URL('../example.json', import.meta.url), 'utf8'));
+const project = JSON.parse(readFileSync(new URL(backend ? '../prepared/example.json' : '../examples/library.json', import.meta.url), 'utf8'));
 
-async function post(path, body) {
-  const response = await runtime.dispatchFetch(`http://demo${path}`, {
+async function post(base, path, body) {
+  const response = await fetch(new URL(path, base), {
     method: 'POST',
-    headers: { authorization: 'Bearer local-demo' },
-    body: JSON.stringify(body)
+    headers: { authorization: `Bearer ${process.env.BUILD_TOKEN ?? 'local-demo'}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60_000)
   });
   const text = await response.text();
   if (!response.ok) throw Error(text);
@@ -19,8 +21,11 @@ async function post(path, body) {
 }
 
 try {
-  const bundle = await post('/build', project);
-  console.log(JSON.stringify(backend ? await post(`/run/${bundle.id}`) : bundle, null, 2));
+  server = await startDevServer({ state });
+  const bundle = await post(server.base, '/build', project);
+  const result = backend ? await (await fetch(new URL(bundle.serverUrl + 'task', server.base))).json() : bundle;
+  console.log(JSON.stringify(result, null, 2));
 } finally {
-  await runtime.dispose();
+  await server?.stop();
+  rmSync(state, { recursive: true, force: true });
 }
