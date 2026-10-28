@@ -6,8 +6,9 @@
     "node": "^22.23.0 || ^24.22.0 || ^26.12.0"
   },
   "scripts": {
+    "typecheck": "npm --prefix host run types && tsc",
     "prepare:runtime": "node scripts/prepare.js",
-    "test": "npm run prepare:runtime && node scripts/verify.js",
+    "test": "npm run prepare:runtime && npm run typecheck && node scripts/verify.js",
     "test:browser": "playwright test",
     "test:all": "npm test && npm run test:browser",
     "deploy": "npm run prepare:runtime && npm --prefix host run deploy --",
@@ -31,9 +32,11 @@
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
+    "@types/node": "24.19.2",
     "emnapi": "2.0.0-alpha.5",
     "esbuild": "0.28.2",
-    "miniflare": "4.20260730.0"
+    "miniflare": "4.20260730.0",
+    "typescript": "7.0.2"
   },
   "overrides": {
     "miniflare": {

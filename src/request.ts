@@ -1,14 +1,14 @@
-import { validateProject } from './project.js';
+import { validateProject } from './project.ts';
 
-export function authorized(request, token) {
+export function authorized(request: Request, token: string) {
   if (!token) return false;
-  const encode = value => new TextEncoder().encode(value);
+  const encode = (value: string) => new TextEncoder().encode(value);
   const actual = encode(request.headers.get('authorization') ?? '');
   const expected = encode(`Bearer ${token}`);
   return actual.length === expected.length && crypto.subtle.timingSafeEqual(actual, expected);
 }
 
-export async function readProject(request) {
+export async function readProject(request: Request) {
   // Enforce the limit while reading, including requests without Content-Length.
   let size = 0;
   const chunks = [];
@@ -17,7 +17,7 @@ export async function readProject(request) {
     if (size > 512_000) throw Error('Request exceeds 512 KB.');
     chunks.push(chunk);
   }
-  const project = JSON.parse(await new Blob(chunks).text());
+  const project: unknown = JSON.parse(await new Blob(chunks).text());
   validateProject(project);
   return project;
 }

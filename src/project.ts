@@ -1,6 +1,10 @@
+import type { Plugin } from 'vite';
+import type { RolldownError } from 'rolldown';
+import type { Diagnostic, Project } from './types.ts';
+
 // The platform supplies configuration and dependencies; users supply source files.
-export function validateProject(project) {
-  const { files, entry = 'main.js' } = project ?? {};
+export function validateProject(project: unknown): asserts project is Project {
+  const { files, entry = 'main.js' } = (project ?? {}) as { files?: unknown; entry?: unknown };
   if (!files || typeof files !== 'object' || Array.isArray(files)) throw Error('Supply a files object.');
   if (typeof entry !== 'string' || !Object.hasOwn(files, entry)) throw Error('Entry must name a supplied file.');
   if (Object.keys(files).length > 30) throw Error('At most 30 source files are allowed.');
@@ -14,7 +18,7 @@ export function validateProject(project) {
   }
 }
 
-export function restrictImports(files, dependencies) {
+export function restrictImports(files: Project['files'], dependencies: Record<string, string>): Plugin {
   return {
     name: 'fixed-dependencies',
     enforce: 'pre',
@@ -35,15 +39,19 @@ export function restrictImports(files, dependencies) {
   };
 }
 
-export function diagnostic(error) {
-  const location = error.loc ?? error.location;
-  const message = (error.message ?? String(error)).replace(/\u001b\[[0-9;]*m/g, '');
+// Compiler errors can carry either Vite/Rolldown's loc or a plugin's location.
+type CompilerError = Partial<RolldownError> & { location?: RolldownError['loc'] };
+
+export function diagnostic(error: unknown): Diagnostic {
+  const details: CompilerError = error && typeof error === 'object' ? error : {};
+  const location = details.loc ?? details.location;
+  const message = (details.message ?? String(error)).replace(/\u001b\[[0-9;]*m/g, '');
   const renderedLocation = message.match(/tmp\/app\/([^:\n]+):(\d+):(\d+)/);
   return {
     message,
-    file: (location?.file ?? error.id ?? renderedLocation?.[1])?.replace(/^\/tmp\/app\//, ''),
+    file: (location?.file ?? details.id ?? renderedLocation?.[1])?.replace(/^\/tmp\/app\//, ''),
     line: location?.line ?? (renderedLocation ? Number(renderedLocation[2]) : undefined),
     column: location?.column ?? (renderedLocation ? Number(renderedLocation[3]) - 1 : undefined),
-    frame: error.frame?.replace(/\u001b\[[0-9;]*m/g, '')
+    frame: details.frame?.replace(/\u001b\[[0-9;]*m/g, '')
   };
 }

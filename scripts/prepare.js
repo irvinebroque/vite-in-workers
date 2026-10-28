@@ -31,7 +31,7 @@ const rolldownPackage = JSON.parse(readFileSync(path.join(rolldownDir, 'package.
 const browserBinding = readFileSync(path.join(rolldownDir, 'dist/rolldown-binding.wasi-browser.js'), 'utf8');
 const exports = [...browserBinding.matchAll(/export const (\w+) = __napiModule.exports\./g)].map(match => match[1]);
 if (!exports.includes('BindingBundler')) throw Error('Review the Rolldown binding exports.');
-writeFileSync('prepared/binding.js', 'import { getBinding } from "../compat/rolldown.js";\nconst binding = getBinding();\n' +
+writeFileSync('prepared/binding.js', 'import { getBinding } from "../compat/rolldown.ts";\nconst binding = getBinding();\n' +
   exports.map(name => `export const ${name} = binding.${name};`).join('\n'));
 
 // Vite reads its package metadata and probes this client file during startup,
@@ -63,7 +63,7 @@ const example = {
 writeFileSync('prepared/example.json', JSON.stringify(example, null, 2));
 
 await build({
-  entryPoints: ['src/build.js'],
+  entryPoints: ['src/build.ts'],
   outfile: 'prepared/runtime.txt',
   bundle: true,
   format: 'esm',
@@ -105,7 +105,7 @@ console.log(`Packaged Vite ${version}. Application builds will run inside Worker
 
 // Package the platform shell too. This never compiles the example application.
 await build({
-  entryPoints: ['src/host.js'], outfile: 'prepared/host.js',
+  entryPoints: ['src/host.ts'], outfile: 'prepared/host.js',
   bundle: true, format: 'esm', platform: 'browser', target: 'es2022',
   external: ['./runtime.txt', './rolldown.bin', './lexer.bin'],
   loader: { '.html': 'text' }

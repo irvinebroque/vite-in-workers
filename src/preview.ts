@@ -1,16 +1,18 @@
-const types = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', map: 'application/json', svg: 'image/svg+xml' };
+import type { SavedBuild } from './types.ts';
 
-export async function previewResponse(request, env) {
+const types: Record<string, string> = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', map: 'application/json', svg: 'image/svg+xml' };
+
+export async function previewResponse(request: Request, env: Env) {
   const url = new URL(request.url);
   const [, , id, ...segments] = url.pathname.split('/');
   if (!/^[\w-]+$/.test(id)) return new Response('Not found', { status: 404 });
   const saved = await env.BUILDS.get(id);
   if (!saved) return new Response('Not found', { status: 404 });
-  const { bundle } = await saved.json();
+  const { bundle } = await saved.json<SavedBuild>();
   const filename = segments.join('/') || 'index.html';
   const file = bundle.output.find(file => file.filename === filename);
   if (!file) return new Response('Not found', { status: 404 });
-  const type = types[filename.split('.').pop()] ?? 'text/plain';
+  const type = types[filename.split('.').pop() ?? ''] ?? 'text/plain';
   const base = `${url.origin}/preview/${id}/`;
   const policy = [
     'sandbox allow-scripts',

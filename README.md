@@ -112,6 +112,9 @@ npx playwright install chromium
 npm run test:all       # Local Worker integration + Chromium
 ```
 
+Worker source is TypeScript. `npm run typecheck` checks it against bindings
+generated from the `cf` config; `test:all` includes this check.
+
 [Validation results and limits →](VALIDATION.md)
 
 ## Deploy
@@ -132,9 +135,9 @@ Use the generated token in the hosted editor. Preview URLs and source maps are p
 
 | Start here | What it does |
 | --- | --- |
-| [src/host.js](src/host.js) | Authenticate → create compiler → save revision |
-| [src/build.js](src/build.js) | Write source to memory → call Vite → return files |
-| [compat/rolldown.js](compat/rolldown.js) | Load WASM and drive its async runtime |
+| [src/host.ts](src/host.ts) | Authenticate → create compiler → save revision |
+| [src/build.ts](src/build.ts) | Write source to memory → call Vite → return files |
+| [compat/rolldown.ts](compat/rolldown.ts) | Load WASM and drive its async runtime |
 | [toolchain/](toolchain/README.md) | Build Rolldown from pinned upstream source |
 | [PLATFORM.md](PLATFORM.md) | API, permissions, storage, and platform integration |
 

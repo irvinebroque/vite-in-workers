@@ -1,21 +1,24 @@
-import { initializeRuntime, writeFiles } from '../compat/runtime.js';
-import { memory, withRuntime } from '../compat/rolldown.js';
+import type { BuildOptions } from 'vite';
+import type { BuildResult, Diagnostic, Project } from './types.ts';
+import { initializeRuntime, writeFiles } from '../compat/runtime.ts';
+import { memory, withRuntime } from '../compat/rolldown.ts';
 import dependencies from '../prepared/dependencies.json';
-import { restrictImports, diagnostic } from './project.js';
+import { restrictImports, diagnostic } from './project.ts';
 
 // The host validates input. This child only compiles; it has no platform bindings.
 export default {
   async fetch(request) {
     try {
-      const project = await request.json();
+      const project = await request.json<Project>();
       await initializeRuntime();
       writeFiles(project.files, '/tmp/app/');
       const vite = await import('vite');
       const rolldown = await import('rolldown');
       const entry = `/tmp/app/${project.entry ?? 'main.js'}`;
-      let runtime;
-      const warnings = [];
-      const build = {
+      const html = entry.endsWith('.html');
+      let runtime: string | undefined;
+      const warnings: Diagnostic[] = [];
+      const build: BuildOptions = {
         write: false,
         minify: false,
         cssMinify: false,
@@ -23,10 +26,12 @@ export default {
         target: 'esnext',
         assetsInlineLimit: 0,
         modulePreload: false,
-        rolldownOptions: { onwarn: warning => warnings.push(diagnostic(warning)) }
+        rolldownOptions: {
+          input: html ? entry : undefined,
+          onwarn: warning => warnings.push(diagnostic(warning))
+        },
+        lib: html ? undefined : { entry, formats: ['es'], fileName: 'app' }
       };
-      if (entry.endsWith('.html')) build.rolldownOptions.input = entry;
-      else build.lib = { entry, formats: ['es'], fileName: 'app' };
 
       const result = await withRuntime(() => vite.build({
         root: '/tmp/app',
@@ -42,7 +47,10 @@ export default {
         }],
         build
       }));
-      const output = [result].flat().flatMap(bundle => bundle.output);
+      const output = [result].flat().flatMap(bundle => {
+        if (!('output' in bundle)) throw Error('Expected a build result, not a watcher.');
+        return bundle.output;
+      });
       return Response.json({
         viteVersion: vite.version,
         rolldownVersion: rolldown.VERSION,
@@ -51,15 +59,17 @@ export default {
         wasmMemoryBytes: memory.buffer.byteLength,
         warnings,
         output: output.map(file => {
-          const contents = file.code ?? file.source;
+          const contents = file.type === 'chunk' ? file.code : file.source;
           return {
             filename: file.fileName,
             code: typeof contents === 'string' ? contents : new TextDecoder().decode(contents)
           };
         })
-      });
+      } satisfies BuildResult);
     } catch (error) {
-      return Response.json({ errors: (error.errors ?? [error]).map(diagnostic) }, { status: 422 });
+      const errors = error && typeof error === 'object' && 'errors' in error && Array.isArray(error.errors)
+        ? error.errors : [error];
+      return Response.json({ errors: errors.map(diagnostic) }, { status: 422 });
     }
   }
-};
+} satisfies ExportedHandler;

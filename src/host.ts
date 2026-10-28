@@ -1,10 +1,11 @@
+import type { BuildResult, SavedBuild } from './types.ts';
 import runtime from './runtime.txt';
 import rolldown from './rolldown.bin';
 import lexer from './lexer.bin';
 import page from '../public/index.html';
 import example from '../prepared/example.json';
-import { previewResponse } from './preview.js';
-import { readProject, authorized } from './request.js';
+import { previewResponse } from './preview.ts';
+import { readProject, authorized } from './request.ts';
 
 export default {
   async fetch(request, env) {
@@ -27,7 +28,7 @@ export default {
     if ((resource === 'projects' && method === 'GET') || (resource === 'run' && method === 'POST')) {
       const saved = await env.BUILDS.get(id);
       if (!saved) return new Response('Not found', { status: 404 });
-      const { project, bundle } = await saved.json();
+      const { project, bundle } = await saved.json<SavedBuild>();
       return resource === 'projects' ? Response.json(project) : runApplication(bundle, env.LOADER);
     }
     if (path !== '/build') return new Response('Not found', { status: 404 });
@@ -37,7 +38,7 @@ export default {
     try {
       project = await readProject(request);
     } catch (error) {
-      return Response.json({ errors: [{ message: error.message }] }, { status: 400 });
+      return Response.json({ errors: [{ message: error instanceof Error ? error.message : String(error) }] }, { status: 400 });
     }
 
     try {
@@ -58,9 +59,9 @@ export default {
         method: 'POST', body: JSON.stringify(project)
       }));
       if (!response.ok) return response;
-      const bundle = await response.json();
+      const bundle = await response.json<BuildResult>();
       const id = crypto.randomUUID();
-      const saved = new TextEncoder().encode(JSON.stringify({ project, bundle }));
+      const saved = new TextEncoder().encode(JSON.stringify({ project, bundle } satisfies SavedBuild));
       await env.BUILDS.put(id, saved);
       const hasPage = bundle.output.some(file => file.filename === 'index.html');
       return Response.json({ ...bundle, id, preview: hasPage ? `/preview/${id}/index.html` : null });
@@ -69,9 +70,9 @@ export default {
       return Response.json({ errors: [{ message: 'Compiler or storage failed. Check Worker logs.', detail: String(error) }] }, { status: 503 });
     }
   }
-};
+} satisfies ExportedHandler<Env>;
 
-async function runApplication(bundle, loader) {
+async function runApplication(bundle: BuildResult, loader: WorkerLoader) {
   const modules = Object.fromEntries(bundle.output
     .filter(file => file.filename.endsWith('.js'))
     .map(file => [file.filename, file.code]));

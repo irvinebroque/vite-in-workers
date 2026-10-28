@@ -1,12 +1,14 @@
-import { instantiateNapiModule } from '@emnapi/core';
+import { instantiateNapiModule, type WASIInstance } from '@emnapi/core';
 import { asyncWork, tsfn } from '@emnapi/core/plugins';
 import { createContext } from '@emnapi/runtime';
-import { WASI } from '@tybys/wasm-util';
+import { WASI, type IFs } from '@tybys/wasm-util';
 import fs from './fs.cjs';
 import wasm from './rolldown.wasm';
 
-let binding;
-export let memory;
+type Binding = Record<string, unknown> & { advanceWorkerTasks(budget: number): void };
+
+let binding: Binding;
+export let memory: WebAssembly.Memory;
 
 // Called inside the request: WASI initialization needs randomness and timers.
 export async function initializeRolldown() {
@@ -15,7 +17,9 @@ export async function initializeRolldown() {
   context.suppressDestroy();
   const { napiModule } = await instantiateNapiModule(wasm, {
     context,
-    wasi: new WASI({ version: 'preview1', fs, preopens: { '/tmp': '/tmp' } }),
+    // The libraries disagree on unused readlink overloads and command-mode start().
+    // This reactor uses readlinkSync(path) and synchronous WASI initialization.
+    wasi: new WASI({ version: 'preview1', fs: fs as IFs, preopens: { '/tmp': '/tmp' } }) as WASIInstance,
     asyncWorkPoolSize: 0,
     plugins: [asyncWork, tsfn],
     onCreateWorker() { throw new Error('The compiler must run on one thread.'); },
@@ -25,7 +29,7 @@ export async function initializeRolldown() {
     },
     beforeInit({ instance }) {
       for (const [name, register] of Object.entries(instance.exports)) {
-        if (name.startsWith('__napi_register__')) register();
+        if (name.startsWith('__napi_register__') && typeof register === 'function') register();
       }
     }
   });
@@ -38,7 +42,7 @@ export function getBinding() {
   return binding;
 }
 
-export async function withRuntime(build) {
+export async function withRuntime<T>(build: () => Promise<T>): Promise<T> {
   let done = false;
   const result = Promise.resolve().then(build);
   const settled = () => { done = true; };

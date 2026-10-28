@@ -1,5 +1,5 @@
 import fs from './fs.cjs';
-import { initializeRolldown } from './rolldown.js';
+import { initializeRolldown } from './rolldown.ts';
 import toolFiles from '../prepared/tool-files.json';
 
 export async function initializeRuntime() {
@@ -9,7 +9,7 @@ export async function initializeRuntime() {
   await initializeRolldown();
 }
 
-export function writeFiles(files, prefix = '') {
+export function writeFiles(files: Record<string, string>, prefix = '') {
   for (const [name, contents] of Object.entries(files)) {
     const filename = prefix + name;
     const directory = filename.slice(0, filename.lastIndexOf('/'));

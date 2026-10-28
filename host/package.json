@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "types": "cf workers types",
     "dev": "cf dev",
     "deploy": "cf deploy"
   },

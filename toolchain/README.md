@@ -29,7 +29,7 @@ build. Temporary source checkouts are removed; Cargo artifacts stay in
 1. Register a custom N-API async runtime. `worker-runtime.rs` implements the
    public `napi::bindgen_prelude::AsyncRuntime` interface using Tokio's
    current-thread executor. An `advanceWorkerTasks` export polls a self-waking root future
-   a fixed number of times. `compat/rolldown.js` calls it between JavaScript event-loop turns so
+   a fixed number of times. `compat/rolldown.ts` calls it between JavaScript event-loop turns so
    asynchronous Vite plugins can finish without spawning OS/browser threads.
 2. Read emitted assets synchronously on WASM. Tokio's asynchronous filesystem
    uses a blocking thread pool; our filesystem is already in memory. Native

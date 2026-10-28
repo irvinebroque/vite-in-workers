@@ -52,7 +52,7 @@ public [AsyncRuntime interface](https://github.com/napi-rs/napi-rs/blob/8bab46ee
 WASM. `toolchain/worker-runtime.rs` is the complete executor implementation.
 Neither N-API nor its build helper, Tokio, emnapi, or WASI is patched.
 
-Our **JavaScript loader** in `compat/rolldown.js` supplies the precompiled WASM,
+Our **WASM loader** in `compat/rolldown.ts` supplies the precompiled WASM,
 shared virtual filesystem, non-shared 64 MiB initial memory, and emnapi's async-work
 and thread-safe-function plugins. Callback scheduling uses the context's feature
 configuration to choose microtasks. Initialization happens inside the request;
