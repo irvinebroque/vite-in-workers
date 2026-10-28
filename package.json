@@ -8,18 +8,18 @@
   },
   "scripts": {
     "typecheck": "cf workers types && tsc",
-    "prepare:runtime": "node scripts/prepare.js",
-    "test": "npm run prepare:runtime && npm run typecheck && node scripts/verify.js",
+    "prepare:compiler": "node scripts/prepare-compiler.js",
+    "test": "npm run prepare:compiler && npm run typecheck && node scripts/verify.js",
     "test:browser": "playwright test",
     "test:all": "npm test && npm run test:browser",
-    "deploy": "npm run prepare:runtime && cf deploy",
+    "deploy": "npm run prepare:compiler && cf deploy",
     "token": "node scripts/create-token.js",
     "demo:backend": "npm run demo -- --backend",
-    "dev": "npm run prepare:runtime && cf dev",
-    "demo": "npm run prepare:runtime && node scripts/demo.js",
+    "dev": "npm run prepare:compiler && cf dev",
+    "demo": "npm run prepare:compiler && node scripts/demo.js",
     "build:rolldown": "node toolchain/build.js",
     "check:toolchain": "node toolchain/check.js",
-    "build": "npm run prepare:runtime && cf build"
+    "build": "npm run prepare:compiler && cf build"
   },
   "dependencies": {
     "@emnapi/core": "2.0.0-alpha.5",

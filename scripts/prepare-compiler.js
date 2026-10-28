@@ -1,5 +1,6 @@
 // Packages Vite itself for Workers. Submitted application code is not built here.
-import { build, transform } from 'esbuild';
+import { build } from 'esbuild';
+import { adaptModule, extractViteLexer } from './vite-adapter.js';
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -13,16 +14,9 @@ mkdirSync('prepared', { recursive: true });
 
 const vitePackage = readFileSync('node_modules/vite/package.json', 'utf8');
 const version = JSON.parse(vitePackage).version;
-if (version !== '8.3.5') throw new Error('Review the compatibility adapter before upgrading Vite.');
 
-// Vite normally compiles this embedded lexer WASM at runtime. Workers needs an
-// imported WASM module instead. Extract it once, when packaging the toolchain.
 const viteSource = readFileSync('node_modules/vite/dist/node/chunks/node.js', 'utf8');
-const lexer = viteSource.match(/return A = "(AGFzb[^"]+)"/)?.[1];
-if (!lexer || !viteSource.includes('WebAssembly.compile(C())')) {
-  throw new Error('Vite lexer layout changed. Update the adapter.');
-}
-writeFileSync('prepared/lexer.bin', Buffer.from(lexer, 'base64'));
+writeFileSync('prepared/lexer.bin', extractViteLexer(viteSource, version));
 copyFileSync('toolchain/rolldown.wasm', 'prepared/rolldown.bin');
 
 // Keep the published JavaScript API, supplying our own single-threaded binding.
@@ -31,7 +25,7 @@ const rolldownPackage = JSON.parse(readFileSync(path.join(rolldownDir, 'package.
 const browserBinding = readFileSync(path.join(rolldownDir, 'dist/rolldown-binding.wasi-browser.js'), 'utf8');
 const exports = [...browserBinding.matchAll(/export const (\w+) = __napiModule.exports\./g)].map(match => match[1]);
 if (!exports.includes('BindingBundler')) throw Error('Review the Rolldown binding exports.');
-writeFileSync('prepared/binding.js', 'import { getBinding } from "../compat/rolldown.ts";\nconst binding = getBinding();\n' +
+writeFileSync('prepared/binding.js', 'import { getBinding } from "../src/compiler/rolldown.ts";\nconst binding = getBinding();\n' +
   exports.map(name => `export const ${name} = binding.${name};`).join('\n'));
 
 // Vite reads its package metadata and probes this client file during startup,
@@ -61,12 +55,12 @@ writeFileSync('prepared/tool-files.json', JSON.stringify(toolFiles));
 const example = {
   entry: 'index.html',
   serverEntry: 'server.ts',
-  files: Object.fromEntries(readdirSync('examples/react').map(name => [name, readFileSync(`examples/react/${name}`, 'utf8')]))
+  files: Object.fromEntries(readdirSync('examples/full-stack').map(name => [name, readFileSync(`examples/full-stack/${name}`, 'utf8')]))
 };
 writeFileSync('prepared/example.json', JSON.stringify(example, null, 2));
 
 await build({
-  entryPoints: ['src/build.ts'],
+  entryPoints: ['src/compiler/worker.ts'],
   outfile: 'prepared/runtime.txt',
   bundle: true,
   format: 'esm',
@@ -102,30 +96,3 @@ await build({
   }]
 });
 console.log(`Packaged Vite ${version}. Application builds will run inside Workers.`);
-
-async function adaptModule(source, filename) {
-  // Vite serializes this function into browser code. Preserve its import.meta
-  // using the placeholder that Vite's getPreloadCode() already restores.
-  if (filename.endsWith('/vite/dist/node/chunks/node.js')) {
-    const start = source.indexOf('function preload(baseModule, deps, importerUrl)');
-    const end = source.indexOf('function getPreloadCode(', start);
-    if (start < 0 || end < 0) throw Error('Review the Vite browser-preload adapter.');
-    source = source.slice(0, start) + source.slice(start, end).replaceAll('import.meta', '𝐢𝐦𝐩𝐨𝐫𝐭.meta') + source.slice(end);
-  }
-  if (source.includes('WebAssembly.compile(C())')) {
-    source = 'import lexerWasm from "./lexer.wasm";\n' +
-      source.replace('WebAssembly.compile(C())', 'Promise.resolve(lexerWasm)');
-  }
-
-  // Expose Vite's bundled CommonJS imports so esbuild can include them.
-  source = source.replace(/\b__require\((['"])/g, 'require($1');
-
-  // Use a parser so strings containing generated application code stay untouched.
-  if (!source.includes('import.meta')) return source;
-  const virtualPath = '/tmp/node_modules/' + path.relative(path.join(root, 'node_modules'), filename);
-  return (await transform(source, { loader: 'js', target: 'es2022', charset: 'utf8', define: {
-    'import.meta.url': JSON.stringify('file://' + virtualPath),
-    'import.meta.dirname': JSON.stringify(path.dirname(virtualPath)),
-    'import.meta.filename': JSON.stringify(virtualPath)
-  } })).code;
-}

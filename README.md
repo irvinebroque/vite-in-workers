@@ -165,7 +165,7 @@ Choose your Worker and bucket names in [cloudflare.config.ts](cloudflare.config.
 
 ```sh
 npm run token         # Creates private work/hosted-secrets.json
-npm run prepare:runtime
+npm run prepare:compiler
 npx cf auth login
 npx cf deploy --secrets-file work/hosted-secrets.json
 ```
@@ -177,11 +177,16 @@ Use the generated token in the hosted editor. Preview URLs and source maps are p
 
 | Start here | What it does |
 | --- | --- |
-| [src/host.ts](src/host.ts) | Authenticate → create compiler → save revision |
-| [src/build.ts](src/build.ts) | Write source to memory → call Vite → return files |
-| [src/application.ts](src/application.ts) | Run compiled server modules with isolated bindings |
-| [examples/react/server.ts](examples/react/server.ts) | Editable server in the full-stack demo |
-| [compat/rolldown.ts](compat/rolldown.ts) | Load WASM and drive its async runtime |
+| [src/host/worker.ts](src/host/worker.ts) | Route requests and authenticate build access |
+| [src/host/build.ts](src/host/build.ts) | Compile client and server → save a successful revision |
+| [src/host/preview.ts](src/host/preview.ts) | Serve client assets and route API requests to the compiled server |
+| [src/compiler/worker.ts](src/compiler/worker.ts) | Write source to memory → call Vite → return files |
+| [src/host/run-server.ts](src/host/run-server.ts) | Run compiled server modules with isolated bindings |
+| [src/protocol.ts](src/protocol.ts) | Source, compiler requests, and client/server result types |
+| [examples/full-stack/server.ts](examples/full-stack/server.ts) | Editable server in the full-stack demo |
+| [src/compiler/rolldown.ts](src/compiler/rolldown.ts) | Load WASM and drive its async runtime |
+| [scripts/prepare-compiler.js](scripts/prepare-compiler.js) | Package the compiler and fixed dependencies |
+| [scripts/vite-adapter.js](scripts/vite-adapter.js) | Version-sensitive transformations to review when upgrading Vite |
 | [toolchain/](toolchain/README.md) | Build Rolldown from pinned upstream source |
 
 [MIT license](LICENSE)

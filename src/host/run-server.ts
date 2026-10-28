@@ -1,7 +1,7 @@
-import type { BuildResult } from './types.ts';
+import type { BuildResult } from '../protocol.ts';
 import { readBody } from './request.ts';
 
-export async function applicationResponse(request: Request, server: BuildResult, id: string, loader: WorkerLoader) {
+export async function runServer(request: Request, server: BuildResult, id: string, loader: WorkerLoader) {
   // Preview APIs are public by revision URL. Never forward host credentials or cookies.
   const headers = new Headers({
     'access-control-allow-origin': '*',

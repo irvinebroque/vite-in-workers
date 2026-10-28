@@ -13,5 +13,5 @@
     "allowJs": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*.ts", "compat/**/*.ts", "cloudflare.config.ts", "vite.config.ts"]
+  "include": ["src/**/*.ts", "cloudflare.config.ts", "vite.config.ts"]
 }

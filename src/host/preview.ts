@@ -1,5 +1,5 @@
-import type { SavedBuild } from './types.ts';
-import { applicationResponse } from './application.ts';
+import type { StoredRevision } from './build.ts';
+import { runServer } from './run-server.ts';
 
 const types: Record<string, string> = { html: 'text/html', js: 'text/javascript', css: 'text/css', json: 'application/json', map: 'application/json', svg: 'image/svg+xml' };
 
@@ -7,15 +7,15 @@ export async function previewResponse(request: Request, env: Env) {
   const url = new URL(request.url);
   const [, , id, ...segments] = url.pathname.split('/');
   if (!/^[\w-]+$/.test(id)) return new Response('Not found', { status: 404 });
-  const saved = await env.BUILDS.get(id);
-  if (!saved) return new Response('Not found', { status: 404 });
-  const { bundle, server } = await saved.json<SavedBuild>();
+  const revision = await env.BUILDS.get(id);
+  if (!revision) return new Response('Not found', { status: 404 });
+  const { bundle: client, server } = await revision.json<StoredRevision>();
   const filename = segments.join('/') || 'index.html';
   if (filename === 'api' || filename.startsWith('api/')) {
-    return server ? applicationResponse(request, server, id, env.LOADER) : new Response('Not found', { status: 404 });
+    return server ? runServer(request, server, id, env.LOADER) : new Response('Not found', { status: 404 });
   }
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response('Use GET or HEAD.', { status: 405 });
-  const file = bundle.output.find(file => file.filename === filename);
+  const file = client.output.find(file => file.filename === filename);
   if (!file) return new Response('Not found', { status: 404 });
   const type = types[filename.split('.').pop() ?? ''] ?? 'text/plain';
   const base = `${url.origin}/preview/${id}/`;

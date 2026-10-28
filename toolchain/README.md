@@ -1,85 +1,128 @@
-# Build Rolldown from upstream
+# How Vite runs inside a Worker
+
+Vite's JavaScript API calls Rolldown to bundle code. This toolchain compiles
+Rolldown's Rust implementation to WebAssembly and connects it to Vite inside
+Cloudflare Workers.
+
+## Prepare the compiler, then build apps
+
+```mermaid
+flowchart TB
+    subgraph Local["Your machine · prepare the compiler"]
+        Rust["Pinned Rolldown source + our patch"] --> Cargo["Cargo"]
+        Cargo --> WASM["rolldown.wasm"]
+        JS["Vite + Rolldown JS wrapper + adapters"] --> Esbuild["esbuild"]
+        Esbuild --> Runtime["Packaged compiler JavaScript"]
+    end
+    WASM --> Compiler
+    Runtime --> Compiler
+    Source["Submitted application source"] --> Compiler
+    subgraph Workers["Workers · build and run the app"]
+        Compiler["Fresh compiler Worker per target<br/>vite.build()"]
+        Compiler --> Client["Client HTML, JS, CSS"]
+        Compiler --> Server["Server JS modules"]
+        Server --> App["Separate application Worker"]
+    end
+    Client --> Browser["Browser preview"]
+```
+
+Cargo runs when the toolchain changes. esbuild packages the compiler for
+deployment. Each submitted client or server build runs Vite inside a fresh
+Worker; the host saves the results and serves the preview.
+
+The compiler's call chain is:
+
+```text
+vite.build()
+  → official @rolldown/browser JavaScript API
+    → emnapi: bridge between JavaScript and Rust's N-API bindings
+      → our compiled Rolldown WASM
+```
+
+The wrapper and Rust source use the same pinned Rolldown version. The wrapper's
+bundled WASM is replaced by the artifact built here.
+
+## Let Rust and JavaScript take turns
+
+Rolldown's Rust tasks can call asynchronous JavaScript plugins. Both must make
+progress on the same thread. Blocking Rust until a plugin finishes would prevent
+JavaScript from completing that plugin.
+
+[worker-runtime.rs](worker-runtime.rs) supplies a Tokio executor that advances
+in bounded steps. [src/compiler/rolldown.ts](../src/compiler/rolldown.ts) drives it:
+
+```mermaid
+sequenceDiagram
+    participant JS as JavaScript event loop
+    participant Rust as Rolldown / Tokio in WASM
+    loop Until vite.build() settles
+        JS->>Rust: advanceWorkerTasks(32)
+        Rust->>JS: Invoke plugin hooks as needed
+        Rust-->>JS: Return after bounded polling
+        JS->>JS: Run timers and promise callbacks
+    end
+```
+
+The core loop in `withRuntime()` is:
+
+```ts
+while (!done) {
+  binding.advanceWorkerTasks(32);
+  await new Promise(resolve => setTimeout(resolve, 0));
+}
+```
+
+The build promise sets `done` when it resolves or rejects. Each compiler Worker
+owns its WASM instance and memory for one build.
+
+## Adapt the runtime and filesystem
+
+[rolldown.patch](rolldown.patch) makes two changes to upstream Rust:
+
+| Change | Why |
+| --- | --- |
+| Register our N-API async runtime | Let JavaScript drive Rust tasks without spawning threads. |
+| Use synchronous asset reads on WASM | Read the in-memory filesystem without Tokio's blocking thread pool. |
+
+The filesystem bridge connects Rust and Vite to the same files:
+
+```text
+Vite JavaScript ── node:fs ──────────────┐
+                                       ├─ Worker filesystem: /tmp/app/
+Rolldown WASM ── WASI ── node:fs ────────┘
+```
+
+[src/compiler/runtime.ts](../src/compiler/runtime.ts) writes the fixed dependencies and
+submitted source into that filesystem. [scripts/prepare-compiler.js](../scripts/prepare-compiler.js)
+packages the compiler using [vite-adapter.js](../scripts/vite-adapter.js) to adapt
+Vite's module paths and extract its lexer WASM for loading in Workers.
+
+This is an experimental build-only port. Watch mode and thread-dependent paths
+are outside its scope. N-API, Tokio, emnapi, and WASI dependencies are unpatched.
+
+## Build and check it
+
+From the repository root, with Node 24.22.0, Git, rustup, and several GB of free space:
 
 ```sh
 npm ci
-npm run build:rolldown
-npm run test:all
+npm run build:rolldown    # Install pinned Rust, patch upstream, compile WASM
+npm run check:toolchain  # Verify inputs, binary hashes, memory, and imports
+npm run test:all         # Exercise compilation and the browser demo
 ```
 
-Requirements: Node 24.22.0, Git, rustup, network access, and several GB of build
-space. The script installs Rust 1.99.0 and its `wasm32-wasip1` target. It uses
-Rust's bundled WASI linker and the official `emnapi` npm package's single-threaded
-static library; no separate WASI SDK, Docker, nightly Rust, or fork is needed.
-Development and deployment use the resulting WASM without rerunning Cargo.
+The build uses the release commit, Rust version, and WASM target in
+[upstream.json](upstream.json), plus upstream's locked Cargo dependencies.
 
-`upstream.json` pins **Rolldown 1.2.15**, the latest stable release checked on
-2026-10-28, and its full official Git commit. This version satisfies Vite 8.3.5's
-`~1.2.14` dependency. The JavaScript wrapper comes from the official
-`@rolldown/browser` package at exactly the same version. Its bundled WASM is
-never used: we compile ours from Rust source.
+| Generated file | Purpose |
+| --- | --- |
+| `toolchain/rolldown.wasm` | Compiler binary loaded into Workers |
+| `toolchain/build.json` | Recorded build inputs and hashes |
+| `reports/rolldown-build.json` | Verification results, memory limits, and imports |
 
-The build checks the release commit, applies `rolldown.patch` with `git apply`,
-copies `worker-runtime.rs` into the binding crate, and runs Cargo with the
-upstream lockfile and `--locked`. An incompatible upstream change fails the
-build. Temporary source checkouts are removed; Cargo artifacts stay in
-`work/rolldown-target/` for inspection and caching.
+All three are ignored by Git. Packaging runs the checker automatically and
+rejects stale artifacts, shared memory, and unexpected thread imports.
 
-## The two source changes
-
-1. Register a custom N-API async runtime. `worker-runtime.rs` implements the
-   public `napi::bindgen_prelude::AsyncRuntime` interface using Tokio's
-   current-thread executor. An `advanceWorkerTasks` export polls a self-waking root future
-   a fixed number of times. `compat/rolldown.ts` calls it between JavaScript event-loop turns so
-   asynchronous Vite plugins can finish without spawning OS/browser threads.
-2. Read emitted assets synchronously on WASM. Tokio's asynchronous filesystem
-   uses a blocking thread pool; our filesystem is already in memory. Native
-   targets retain the upstream asynchronous implementation.
-
-The root future uses Rust’s `poll_fn` and `Waker::wake_by_ref` to return control
-after a fixed number of polls. It does not spawn a keepalive task. It rejects blocking runtime calls, which could
-deadlock this execution model. This is a build-only port: watch/devtools and
-other thread-dependent paths are not enabled or claimed to work.
-
-There are **no patches to napi, napi-build, Tokio, emnapi, or the WASI library**.
-The bridge uses the official emnapi 2.0.0-alpha.5 packages pinned by this Rolldown
-release. The transitive `@napi-rs/wasm-runtime` package stays at 1.2.5 to match
-those peers; our loader imports emnapi and WASI directly.
-
-## Generated files and verification
-
-- `toolchain/rolldown.wasm`: locally compiled artifact, ignored by Git.
-- `toolchain/build.json`: source/recipe/patch/runtime/binary hashes, also ignored.
-- `reports/rolldown-build.json`: checked provenance, memory limits, and imports.
-
-`npm run check:toolchain` checks those hashes against the current source inputs,
-checks the wrapper version, and parses the actual WASM import section to reject
-shared memory or thread imports. `prepare:runtime` runs the same check before
-packaging, so an outdated or missing artifact requires a rebuild. Hashes detect
-accidental mismatches; they are not an independent build attestation.
-
-Vite builds submitted applications inside the Worker. Cargo and esbuild only
-prepare the compiler on the developer's machine. The compiler uses non-shared
-memory, starts at 64 MiB, and can grow. The host creates a fresh isolate for each
-build, so this loader deliberately has no reusable-session lifecycle.
-
-## Updating
-
-1. Check `npm view rolldown version` and the official release tag/commit. Check
-   the installed Vite package's Rolldown range before selecting a release.
-2. Update `upstream.json`, `@rolldown/browser`, and the matching emnapi packages.
-   Use the release's Rust toolchain and lockfile. Review `rolldown.patch` against
-   the new source, especially runtime lifecycle and asset reads.
-3. Run `npm run build:rolldown`, `npm run test:all`, and both CLI demos. Review
-   the new import/memory report, package sizes, and dependency audits.
-4. Deploy using `cf`; rerun hosted integration and Chromium tests before claiming
-   support. Update the expected versions in tests.
-
-The pin is intentional: the build never silently follows `main` or `latest`.
-This project owns its small upstream patch and Worker loader. Owning the build
-removes the third-party fork dependency; it does not establish upstream support
-for Vite running inside Workers.
-
-## Source and license
-
-The build inputs are the official release, official dependency packages, and the
-source files in this directory. This project is licensed under [MIT](../LICENSE).
+To upgrade, update the pins and matching JS packages, review the Rust patch and
+Vite adapters, then rebuild and rerun the tests. See the [main README](../README.md)
+for the demo and deployment through `cf` and `cloudflare.config.ts`.

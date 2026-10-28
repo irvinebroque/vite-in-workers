@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { initializeRolldown } from './rolldown.ts';
-import toolFiles from '../prepared/tool-files.json';
+import toolFiles from '../../prepared/tool-files.json';
 
 export async function initializeRuntime() {
   writeFiles(toolFiles);
